@@ -17,7 +17,7 @@ st.caption("ODS 7: Garantir acesso à energia barata, confiável, sustentável e
 # Parâmetros Elétricos e Ambientais
 TARIFA_KWH = 0.85          # Valor médio do kWh em R$ (com impostos)
 FATOR_EMISSAO_CO2 = 0.085  # kg de CO2 por kWh (Matriz Elétrica Brasileira)
-API_URL = "http://127.0.0.1:8000/api/historico?limite=100"
+API_URL = "https://lumina-project-r8xx.onrender.com/"
 
 def carregar_dados():
     try:
