@@ -5,7 +5,7 @@ from datetime import datetime
 
 TENSAO_VOLTS = 127
 FATOR_POTENCIA = 0.92
-API_URL = "http://127.0.0.1:8000/api/medicao"
+API_URL = "https://lumina-project-r8xx.onrender.com/"
 
 def gerar_e_enviar_leitura():
     if random.random() < 0.8:
