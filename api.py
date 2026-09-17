@@ -1,72 +1,71 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
-import uvicorn
+from datetime import datetime
 
-app = FastAPI(title="Lumina API - ODS 7")
+app = FastAPI(title="Lumina API")
 
-# Inicializa o banco de dados SQLite local
+# 1. Liberar CORS (Essencial para o front-end carregar os dados)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite chamadas do Cloudflare Pages ou local
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Modelo de dados enviado pelo ESP2
+class Leitura(BaseModel):
+    corrente: float
+    potencia: float
+
+# Inicializar Banco de Dados SQLite
 def init_db():
     conn = sqlite3.connect("lumina.db")
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS leituras (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            tensao_v REAL,
-            corrente_a REAL,
-            potencia_w REAL
+            corrente REAL,
+            potencia REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
     conn.commit()
     conn.close()
 
 init_db()
 
-# Estrutura esperada dos dados de entrada
-class MedicaoSchema(BaseModel):
-    timestamp: str
-    tensao_v: float
-    corrente_a: float
-    potencia_w: float
-
-# Endpoint POST para receber leituras (simulador ou ESP32)
-@app.post("/api/medicao")
-def receber_medicao(medicao: MedicaoSchema):
-    conn = sqlite3.connect("lumina.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO leituras (timestamp, tensao_v, corrente_a, potencia_w)
-        VALUES (?, ?, ?, ?)
-    ''', (medicao.timestamp, medicao.tensao_v, medicao.corrente_a, medicao.potencia_w))
-    conn.commit()
-    conn.close()
-    return {"status": "sucesso", "mensagem": "Leitura registrada com sucesso!"}
-
-# Endpoint GET para o Dashboard ler os dados históricos
-@app.get("/api/historico")
-def obter_historico(limite: int = 50):
+# ROTA 1: O ESP2 envia as leituras para cá (POST)
+@app.post("/api/dados")
+def receber_dados(leitura: Leitura):
     conn = sqlite3.connect("lumina.db")
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, timestamp, tensao_v, corrente_a, potencia_w FROM leituras ORDER BY id DESC LIMIT ?", 
+        "INSERT INTO leituras (corrente, potencia) VALUES (?, ?)",
+        (leitura.corrente, leitura.potencia)
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "sucesso", "mensagem": "Dados gravados"}
+
+# ROTA 2: O Dashboard em HTML/JS consulta os dados aqui (GET)
+@app.get("/api/historico")
+def obter_historico(limite: int = 20):
+    conn = sqlite3.connect("lumina.db")
+    cursor = conn.cursor()
+    # Pega os últimos 'limite' registros ordenados pelo tempo
+    cursor.execute(
+        "SELECT corrente, potencia, timestamp FROM leituras ORDER BY id DESC LIMIT ?", 
         (limite,)
     )
     rows = cursor.fetchall()
     conn.close()
-
-    resultado = [
-        {
-            "id": r[0],
-            "timestamp": r[1],
-            "tensao_v": r[2],
-            "corrente_a": r[3],
-            "potencia_w": r[4]
-        }
-        for r in rows
+    
+    # Formata em JSON para o Chart.js ler facilmente
+    dados = [
+        {"corrente": row[0], "potencia": row[1], "timestamp": row[2]} 
+        for row in reversed(rows)
     ]
-    return resultado
-
-if __name__ == "__main__":
-    print("🚀 API Lumina iniciada em http://127.0.0.1:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    return dados
